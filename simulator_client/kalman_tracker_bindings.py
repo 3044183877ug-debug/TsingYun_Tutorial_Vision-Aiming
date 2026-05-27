@@ -45,8 +45,11 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
         if entry:
             dll_dirs.add(Path(entry))
     for dll_dir in dll_dirs:
-        if dll_dir.exists():
-            os.add_dll_directory(str(dll_dir))
+        try:
+            if dll_dir.exists():
+                os.add_dll_directory(str(dll_dir))
+        except PermissionError:
+            pass  
 
 _lib = ctypes.CDLL(str(_LIB_PATH))
 

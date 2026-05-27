@@ -40,7 +40,23 @@ namespace hw
         //                      [dt^3 / 2, dt^2]]
         // P = F * P * F^T + Q
         // store the updated position, velocity, and covariance
-        throw std::logic_error("NotImplementedError: KalmanTracker::AxisFilter::predict");
+        dt = dt > 0.0 ? dt : 0.0;
+        position = position + velocity * dt;
+        double dt2 = dt * dt;
+        double dt3 = dt2 * dt;
+        double dt4 = dt3 * dt;
+        double q00 = process_noise * (dt4 / 4.0);
+        double q01 = process_noise * (dt3 / 2.0);
+        double q10 = process_noise * (dt3 / 2.0);
+        double q11 = process_noise * dt2;
+        double next_p00 = p00 + dt * p10 + dt * p01 + dt2 * p11 + q00;
+        double next_p01 = p01 + dt * p11 + q01;
+        double next_p10 = p10 + dt * p11 + q10;
+        double next_p11 = p11 + q11;
+        p00 = next_p00;
+        p01 = next_p01;
+        p10 = next_p10;
+        p11 = next_p11;
     }
 
     void KalmanTracker::AxisFilter::update(double measured_position, double measurement_noise)
@@ -55,7 +71,24 @@ namespace hw
         // position = position + K[0] * residual
         // velocity = velocity + K[1] * residual
         // P = (I - K * H) * P
-        throw std::logic_error("NotImplementedError: KalmanTracker::AxisFilter::update");
+        double residual = measured_position - position;
+        double s = p00 + measurement_noise;  
+        if (s <= 0.0)
+        {
+            return;
+        }
+        double k0 = p00 / s;
+        double k1 = p10 / s;
+        position = position + k0 * residual;
+        velocity = velocity + k1 * residual;
+        double next_p00 = (1.0 - k0) * p00;
+        double next_p01 = (1.0 - k0) * p01;
+        double next_p10 = -k1 * p00 + p10;
+        double next_p11 = -k1 * p01 + p11;
+        p00 = next_p00;
+        p01 = next_p01;
+        p10 = next_p10;
+        p11 = next_p11;
     }
 
     TrackState KalmanTracker::update(const Vec3 &measurement, double dt)
@@ -69,7 +102,21 @@ namespace hw
         // predict each axis filter using dt
         // update each axis filter with its measured coordinate
         // return position, velocity, and tracking flag
-        throw std::logic_error("NotImplementedError: KalmanTracker::update");
+        if (!tracking_)
+        {
+            x_.reset(measurement.x);
+            y_.reset(measurement.y);
+            z_.reset(measurement.z);
+            tracking_ = true;
+            return stateFromFilters();
+        }
+        x_.predict(dt, process_noise_);
+        y_.predict(dt, process_noise_);
+        z_.predict(dt, process_noise_);
+        x_.update(measurement.x, measurement_noise_);
+        y_.update(measurement.y, measurement_noise_);
+        z_.update(measurement.z, measurement_noise_);
+        return stateFromFilters();
     }
 
     TrackState KalmanTracker::predict(double dt)
@@ -79,9 +126,17 @@ namespace hw
         //     return a non-tracking state
         // predict x, y, z filters with dt
         // return predicted position and velocity
-        throw std::logic_error("NotImplementedError: KalmanTracker::predict");
-    }
+        if (!tracking_)
+        {
+            return {false, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
+        }
 
+        x_.predict(dt, process_noise_);
+        y_.predict(dt, process_noise_);
+        z_.predict(dt, process_noise_);
+
+        return stateFromFilters();
+    }
     TrackState KalmanTracker::stateFromFilters() const
     {
         return {

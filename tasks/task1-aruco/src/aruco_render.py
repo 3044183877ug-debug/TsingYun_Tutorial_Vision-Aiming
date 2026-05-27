@@ -20,7 +20,7 @@ ARUCO_VIDEO_PATH = TASK_ROOT / "data" / "aruco" / "aruco.mp4"
 # choose the same dictionary that was used to print the marker
 # measure the black marker side length in meters and store it in MARKER_LENGTH_METERS
 ARUCO_DICTIONARY = "DICT_4X4_50"
-MARKER_LENGTH_METERS = 0.05
+MARKER_LENGTH_METERS = 0.076
 
 ARUCO_OUTPUT_VIDEO_PATH = TASK_ROOT / "output" / "aruco_result.mp4"
 
@@ -126,7 +126,13 @@ def estimate_marker_pose(marker_corners, marker_length_meters, camera_matrix, di
     # Input: detected 2D marker corners, marker size, camera_matrix, and dist_coeffs.
     # Output: rvec and tvec.
     # `object_points` has already been prepared for you.
-    raise NotImplementedError("estimate_marker_pose is not implemented")
+    success,rvec, tvec = cv2.solvePnP(
+        object_points, 
+        marker_corners, 
+        camera_matrix, 
+        dist_coeffs
+    )
+    return rvec, tvec
 
 
 def render_virtual_object(frame, rvec, tvec, camera_matrix, dist_coeffs, vertices, faces):
@@ -137,14 +143,24 @@ def render_virtual_object(frame, rvec, tvec, camera_matrix, dist_coeffs, vertice
     # Output: the rendered frame.
     #
     # 1. Convert vertices and faces to numpy arrays if needed.
+    verts = np.array(vertices, dtype=np.float32)
+    max_span = np.max(verts, axis=0) - np.min(verts, axis=0)
     # 2. Normalize / scale / translate the model to fit above the marker.
+    scale = MARKER_LENGTH_METERS / np.max(max_span)*0.4
+    verts = verts * scale
+    verts[:, 2] = verts[:, 2] - np.min(verts[:, 2])
     # 3. Use cv2.projectPoints(...) to project 3D vertices to 2D image points.
+    image_points, _ = cv2.projectPoints(verts, rvec, tvec, camera_matrix, dist_coeffs)
+    image_points = np.int32(image_points).reshape(-1, 2)
     # 4. For each face, collect its three projected 2D vertices.
+    for face in faces:
+        pt1 = image_points[face[0]]
+        pt2 = image_points[face[1]]
+        pt3 = image_points[face[2]]
     # 5. Draw the triangle edges or filled triangle on frame.
-    #
+        pts = np.array([pt1, pt2, pt3])
+        cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
     # Model size normalization can be tricky at first; we recommend asking AI for help.
-    
-    raise NotImplementedError("render_virtual_object is not implemented")
 
 
 def process_frame(frame, dictionary, camera_matrix, dist_coeffs, vertices, faces):
